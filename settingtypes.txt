@@ -1,0 +1,2 @@
+#Sets the minimum/maximum length for the password
+password_lenght (Password Lenght) int 4
