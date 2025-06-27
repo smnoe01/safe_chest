@@ -1,5 +1,20 @@
 local S = core.get_translator("safe_chest")
 local password_lenght = tonumber(core.settings:get("password_lenght")) or 4
+has_default = core.get_modpath("default") ~= nil
+has_mineclonia = core.get_modpath("mcl_core") ~= nil
+
+-- Variables based on Minetest Game
+local cols = 8
+local inventory_size = 32
+local groups = {cracky = 1, level = 2}
+-- Variables based on Mineclonia
+if has_mineclonia then
+    cols = 9
+    inventory_size = 36
+    -- This requires a diamond pickaxe, and it takes about 4 seconds to mine just like in MTG.
+    groups = { cracky = 1, pickaxey = 5, material_stone = 1 }
+end
+local rows = math.ceil(inventory_size / cols)
 
 local function create_digit_button(i, row, col)
     return string.format("button[%d,%0.1f;1,1;btn%d;%d]", col, row + 0.5, i, i)
@@ -50,16 +65,39 @@ end
 local function handle_login(meta, password, player)
     local stored_password = meta:get_string("password")
     if password == stored_password then
-        local formspec =
-            "size[8,9]" ..
-            "list[current_player;main;0,5;8,1;]" ..
-            "list[current_player;main;0,6.23;8,3;8]" ..
-            "listring[current_player;main]" ..
-            "list[current_name;main;0,0;8,3;]" ..
-            "listring[current_name;main]" ..
-            "image[7,3;1,1;safe_chest.png]" ..
-            "button[0,3;2.5,1;reset_password;Reset Password]" ..
+        local formspec
+        if has_default then
+            formspec =
+                "size[" .. cols .. ",9]" ..
+                "list[current_player;main;0,5;" .. cols .. ",1;]" ..
+                "list[current_player;main;0,6.23;" .. cols .. ",3;" .. cols .. "]" ..
+                "listring[current_player;main]" ..
+                "list[current_name;main;0,0;" .. cols .. ",3;]" ..
+                "listring[current_name;main]" ..
+                "image[" .. (cols - 1) .. ",3;1,1;safe_chest.png]" ..
+                "button[0,3;2.5,1;reset_password;Reset Password]" ..
+                "tabheader[0,0;safe_chest;Safe Chest Storage;1]"
+        elseif has_mineclonia then
+            local padding_x = 0.33
+            local inv_start_y = 0.5
+            local player_inv_start_y = inv_start_y + ((rows + 1) * 1.1) + 0.75
+            local bf = 1.3 -- bloat factor
+            local hotbar_start_y = player_inv_start_y + 3 + 0.75 + 0.2
+            local button_row = 4.25 * bf
+            formspec =
+            "formspec_version[4]"..
+            "size[" .. cols * bf .. ",".. 9.5 * bf .."]"..
+            mcl_formspec.get_itemslot_bg_v4(padding_x,             inv_start_y,      cols,      rows)..
+            "list[context;main;"          ..padding_x..","..       inv_start_y..";"..cols..","..rows..";]"..
+            "listring[context;main]"..
+            "image[" .. (cols - 1) * bf .. "," .. button_row ..";1,1;safe_chest.png]"..
+            "button["..padding_x..","..button_row..";2.5,1;reset_password;Reset Password]"..
+            mcl_formspec.get_itemslot_bg_v4(padding_x,      player_inv_start_y,      cols,         3)..
+            "list[current_player;main;"   ..padding_x..","..player_inv_start_y..";"..cols..      ",3;"..cols.."]"..
+            mcl_formspec.get_itemslot_bg_v4(padding_x,          hotbar_start_y,      cols,         1)..
+            "list[current_player;main;"   ..padding_x.. ","..   hotbar_start_y..";"..cols..      ",1;]"..
             "tabheader[0,0;safe_chest;Safe Chest Storage;1]"
+        end
 
         meta:set_string("formspec", formspec)
         meta:set_string("formspec_state", "open")
@@ -112,7 +150,7 @@ local function on_construct(pos, placer)
     meta:set_string("password", "")
     meta:set_string("entered_password", "")
     update_formspec(meta, "", "set")
-    meta:get_inventory():set_size("main", 32)
+    meta:get_inventory():set_size("main", inventory_size)
 
     if placer and placer:is_player() then
         meta:set_string("infotext", "Safe Chest (owned by " .. placer:get_player_name() .. ")")
@@ -155,14 +193,24 @@ local function on_receive_fields(pos, _, fields, player)
     end
 end
 
+local sounds, tiles
+
+if has_default then
+    sounds = default.node_sound_metal_defaults()
+    tiles = {"default_stone_block.png", "default_stone_block.png", "default_stone_block.png",
+    "default_stone_block.png", "default_stone_block.png", "safe_chest.png"}
+elseif has_mineclonia then
+    sounds = mcl_sounds.node_sound_metal_defaults()
+    tiles = {"default_stone.png", "default_stone.png", "default_stone.png",
+    "default_stone.png", "default_stone.png", "safe_chest.png"}
+end
+
 core.register_node("safe_chest:safe_chest", {
     description = "Safe Chest",
-    tiles = {"default_stone_block.png", "default_stone_block.png", "default_stone_block.png",
-    "default_stone_block.png", "default_stone_block.png", "safe_chest.png"},
-
-    groups = {cracky = 1, level = 2},
+    tiles = tiles,
+    groups = groups,
     on_construct = on_construct,
-    sounds = default.node_sound_metal_defaults(),
+    sounds = sounds,
     can_dig = can_dig,
     after_place_node = after_place_node,
     on_receive_fields = on_receive_fields,
@@ -170,13 +218,26 @@ core.register_node("safe_chest:safe_chest", {
     paramtype2 = "facedir",
     on_blast = function(pos, intensity)
     end,
+    _mcl_hardness = 10,
+    _mcl_blast_resistance = 1200,
 })
 
-minetest.register_craft({
-	output = "safe_chest:safe_chest",
-	recipe = {
-		{"", "default:steel_ingot", ""},
-		{"default:steelblock", "default:chest_locked", "default:steelblock"},
-		{"", "default:steel_ingot", ""},
-	}
-})
+if has_default then
+    minetest.register_craft({
+        output = "safe_chest:safe_chest",
+        recipe = {
+            {"", "default:steel_ingot", ""},
+            {"default:steelblock", "default:chest_locked", "default:steelblock"},
+            {"", "default:steel_ingot", ""},
+        }
+    })
+elseif has_mineclonia then
+    minetest.register_craft({
+        output = "safe_chest:safe_chest",
+        recipe = {
+            {"mcl_redstone_torch:redstoneblock", "mcl_core:iron_ingot", ""},
+            {"mcl_core:ironblock", "mcl_chests:trapped_chest", "mcl_core:ironblock"},
+            {"", "mcl_core:iron_ingot", ""},
+        }
+    })
+end
